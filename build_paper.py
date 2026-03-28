@@ -108,7 +108,7 @@ def build_doc():
         styles["PaperTitle"],
     ))
     S(Spacer(1, 6))
-    S(Paragraph("Burak Egeli", styles["Authors"]))
+    S(Paragraph("Cenk Burak Egeli", styles["Authors"]))
     S(Paragraph("Independent Research", styles["Affiliation"]))
 
     # ── Abstract ──
@@ -563,6 +563,62 @@ def build_doc():
         ))
 
     # ══════════════════════════════════════════════════════════
+    #  4.6 GSM8K BENCHMARK RESULTS
+    # ══════════════════════════════════════════════════════════
+    S(Paragraph("4.6&nbsp;&nbsp;&nbsp;GSM8K Benchmark Results", styles["SubSectionH"]))
+    S(Paragraph(
+        "To validate that FUSE preserves end-to-end reasoning, I evaluate on GSM8K "
+        "(1,319 grade-school math problems requiring multi-step chain-of-thought). "
+        "Each model runs the full test set in both dense and FUSE-sparse modes. "
+        "Two quality floors are tested: cos &ge; 0.98 (conservative) and cos &ge; 0.95 "
+        "(aggressive).",
+        styles["Body"],
+    ))
+
+    # GSM8K results table
+    gsm_data = [
+        ["Model", "Floor", "Sparsity", "Dense", "Sparse", "Retained"],
+        ["DeepSeek-R1 7B", "cos\u22650.98", "38.6%", "78.8%", "78.5%", "99.6%"],
+        ["DeepSeek-R1 7B", "cos\u22650.95", "53.3%", "78.8%", "70.4%", "89.4%"],
+        ["Qwen3.5-4B", "cos\u22650.98", "28.2%", "74.4%", "74.1%", "99.6%"],
+        ["Qwen3.5-4B", "cos\u22650.95", "41.2%", "74.4%", "67.9%", "91.2%"],
+        ["Qwen3.5-9B", "cos\u22650.98", "30.7%", "87.8%", "85.1%", "96.9%"],
+        ["Qwen3.5-9B", "cos\u22650.95", "44.3%", "87.8%", "80.9%", "92.1%"],
+    ]
+    tgsm = Table(gsm_data, colWidths=[W*0.22, W*0.14, W*0.12, W*0.12, W*0.12, W*0.14])
+    tgsm.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#0c4a6e")),
+        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+        ("FONTSIZE", (0, 0), (-1, -1), 8),
+        ("ALIGN", (1, 0), (-1, -1), "CENTER"),
+        ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#334155")),
+        ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#f0f4f8")]),
+        ("LEFTPADDING", (0, 0), (-1, -1), 6),
+    ]))
+    S(Spacer(1, 4))
+    S(tgsm)
+    S(Paragraph(
+        "<b>Table 4.</b> GSM8K benchmark results (1,319 math reasoning problems). "
+        "At cos &ge; 0.98, FUSE preserves 96.9&ndash;99.6% of benchmark performance "
+        "across three models and two architecture families. At the more aggressive "
+        "cos &ge; 0.95, sparsity increases substantially (up to 53.3%) with 89&ndash;92% "
+        "retention &mdash; a meaningful quality-sparsity tradeoff.",
+        styles["Caption"],
+    ))
+
+    S(Paragraph(
+        "The results reveal a consistent pattern: cos &ge; 0.98 provides near-lossless "
+        "inference across all models, while cos &ge; 0.95 trades ~10% quality for "
+        "substantially more sparsity. Notably, error accumulation across ~200 tokens "
+        "of chain-of-thought reasoning means that per-layer cosine similarity is a "
+        "necessary but not sufficient proxy for end-to-end benchmark retention. The "
+        "quality floor is best understood as a tuning knob: tighten for applications "
+        "requiring high fidelity, loosen for throughput-critical deployment.",
+        styles["Body"],
+    ))
+
+    # ══════════════════════════════════════════════════════════
     #  5. PROJECTED IMPACT
     # ══════════════════════════════════════════════════════════
     S(Paragraph("5&nbsp;&nbsp;&nbsp;Projected Impact for Large Models", styles["SectionH"]))
@@ -599,7 +655,7 @@ def build_doc():
     S(Spacer(1, 4))
     S(t4)
     S(Paragraph(
-        "<b>Table 4.</b> Projected FUSE performance on LLaMA-scale models. W<sub>gate</sub> "
+        "<b>Table 5.</b> Projected FUSE performance on LLaMA-scale models. W<sub>gate</sub> "
         "in RAM is 33% of FFN. I/O per token is the sparse read from W<sub>up</sub> + "
         "W<sub>down</sub>. NVMe rates assume sequential read from neuron-indexed storage. "
         "A ReLUfied LLaMA-70B at 90% sparsity could achieve >1 tok/s on a single NVMe Gen4 "
@@ -639,14 +695,16 @@ def build_doc():
 
     S(Paragraph("6.2&nbsp;&nbsp;&nbsp;Limitations", styles["SubSectionH"]))
     S(Paragraph(
-        "My current evaluation uses cosine similarity and single-task generation rather than "
-        "comprehensive benchmarks (MMLU, GSM8K, HumanEval). While cosine similarity at the "
-        "layer level is a strong proxy for output quality, benchmark scores would strengthen "
-        "the claims. The token-by-token loop in the inference engine, while correct, does not "
-        "achieve wall-clock speedups in the current RAM-resident implementation &mdash; actual "
-        "speedups require the disk-streaming backend. Additionally, calibration on 5 sentences "
-        "(~170 tokens) may not capture all activation patterns; scaling to larger calibration "
-        "sets could refine the schedules further.",
+        "While GSM8K results confirm near-lossless performance at cos &ge; 0.98, evaluation "
+        "on additional benchmarks (MMLU, HumanEval, MATH) would further strengthen the claims "
+        "across different reasoning domains. The token-by-token loop in the inference engine, "
+        "while correct, does not achieve wall-clock speedups in the current RAM-resident "
+        "implementation &mdash; actual speedups require the disk-streaming backend. Additionally, "
+        "calibration on 5 sentences (~170 tokens) may not capture all activation patterns; "
+        "scaling to larger calibration sets could refine the schedules further. The gap between "
+        "per-layer cosine similarity and end-to-end benchmark retention (observed at cos &ge; 0.95) "
+        "suggests that error accumulation across long chain-of-thought sequences is a key factor "
+        "in determining practical quality thresholds.",
         styles["Body"],
     ))
 

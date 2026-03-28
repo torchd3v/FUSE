@@ -8,7 +8,7 @@
 
 ### Abstract
 
-I present FUSE (Feed-forward Unit-Sparse Execution), a sparse inference method for SwiGLU-based large language models that eliminates the need for trained activation predictors. I observe that the gate projection W_gate — just 33% of FFN parameters — already encodes which neurons will fire for any given input. FUSE keeps W_gate resident in fast memory, computes gate activations to identify active neurons via top-K selection, and loads only the corresponding rows of W_up and W_down from storage. Unlike PowerInfer, Deja Vu, and LLM in a Flash, which require model-specific predictor training, FUSE uses the model's own gating mechanism as a zero-cost, exact activation tracer. I further introduce a per-layer adaptive calibration algorithm that binary-searches each layer's maximum sparsity above a cosine similarity floor, replacing uniform sparsity targets that ignore layer heterogeneity. I validate FUSE across five models spanning three architecture families — LLaMA (TinyLlama 1.1B), Qwen2 (DeepSeek-R1-Distill-Qwen-7B), and Qwen3.5 (4B and 9B with hybrid Gated DeltaNet attention) — with zero code changes. On DeepSeek-R1 7B, adaptive calibration achieves 53.3% average sparsity (2.1x I/O reduction) at cos ≥ 0.95 with per-layer targets ranging from 32% to 91%. On ReLUfied TinyLlama, FUSE reaches 75.4% sparsity (4.1x I/O reduction) at cos ≥ 0.98. On Qwen3.5-9B, FUSE achieves 44.3% sparsity (1.8x I/O reduction), revealing a novel descending-slope layer sensitivity profile characteristic of the hybrid DeltaNet/attention architecture. Multi-step arithmetic reasoning (17 × 23 = 391) is fully preserved across all models. The approach requires no training, no quantization, and no architecture modification — only a one-time calibration pass.
+I present FUSE (Feed-forward Unit-Sparse Execution), a sparse inference method for SwiGLU-based large language models that eliminates the need for trained activation predictors. I observe that the gate projection W_gate — just 33% of FFN parameters — already encodes which neurons will fire for any given input. FUSE keeps W_gate resident in fast memory, computes gate activations to identify active neurons via top-K selection, and loads only the corresponding rows of W_up and W_down from storage. Unlike PowerInfer, Deja Vu, and LLM in a Flash, which require model-specific predictor training, FUSE uses the model's own gating mechanism as a zero-cost, exact activation tracer. I further introduce a per-layer adaptive calibration algorithm that binary-searches each layer's maximum sparsity above a cosine similarity floor, replacing uniform sparsity targets that ignore layer heterogeneity. I validate FUSE across five models spanning three architecture families — LLaMA (TinyLlama 1.1B), Qwen2 (DeepSeek-R1-Distill-Qwen-7B), and Qwen3.5 (4B and 9B with hybrid Gated DeltaNet attention) — with zero code changes. On GSM8K (1,319 math reasoning problems), FUSE at cos ≥ 0.98 preserves 99.6% of DeepSeek-R1 7B's score at 38.6% sparsity, 99.6% of Qwen3.5-4B's score at 28.2% sparsity, and 96.9% of Qwen3.5-9B's score at 30.7% sparsity. At the more aggressive cos ≥ 0.95 floor, sparsity increases to 53.3% (DeepSeek-R1 7B) and 44.3% (Qwen3.5-9B) with 89–92% benchmark retention. On ReLUfied TinyLlama, FUSE reaches 75.4% sparsity (4.1x I/O reduction) at cos ≥ 0.98. The approach requires no training, no quantization, and no architecture modification — only a one-time calibration pass.
 
 ---
 
@@ -25,6 +25,25 @@ I present FUSE (Feed-forward Unit-Sparse Execution), a sparse inference method f
 Validated across **five models, three architecture families** (LLaMA, Qwen2, Qwen3.5) with **zero code changes**. Multi-step arithmetic reasoning is fully preserved in every case — even on Qwen3.5's novel hybrid Gated DeltaNet + full attention architecture.
 
 ![FUSE Results Across Five Models](figures/sparsity_comparison.png)
+
+### GSM8K Benchmark Results (1,319 math reasoning problems)
+
+| Model | Floor | Sparsity | I/O Reduction | Dense | FUSE Sparse | Retained |
+|---|---|---|---|---|---|---|
+| DeepSeek-R1 7B | cos≥0.98 | 38.6% | 1.63x | 78.8% | 78.5% | **99.6%** ✓ |
+| DeepSeek-R1 7B | cos≥0.95 | 53.3% | 2.14x | 78.8% | 70.4% | 89.4% |
+| Qwen3.5-4B | cos≥0.98 | 28.2% | 1.39x | 74.4% | 74.1% | **99.6%** ✓ |
+| Qwen3.5-4B | cos≥0.95 | 41.2% | 1.70x | 74.4% | 67.9% | 91.2% |
+| Qwen3.5-9B | cos≥0.98 | 30.7% | 1.44x | 87.8% | 85.1% | **96.9%** ✓ |
+| Qwen3.5-9B | cos≥0.95 | 44.3% | 1.80x | 87.8% | 80.9% | 92.1% |
+
+**At cos≥0.98, FUSE preserves 96.9–99.6% of GSM8K performance across all models** — with zero training, zero quantization, and a one-time 5-minute calibration. The quality floor is the user-facing knob: tighten for near-lossless inference (cos≥0.98), loosen for more aggressive compression (cos≥0.95).
+
+![GSM8K Benchmark Retention](figures/gsm8k_retained.png)
+
+![Quality-Sparsity Tradeoff](figures/gsm8k_tradeoff.png)
+
+![GSM8K Scores: Dense vs Sparse](figures/gsm8k_scores.png)
 
 ### What This Means in Practice
 
@@ -309,7 +328,8 @@ For models too large to fit in GPU memory, FUSE enables disk-streaming inference
 - [x] Working text generation with FUSE-patched forward pass
 - [x] Per-layer adaptive calibration (vectorized)
 - [x] Validated on DeepSeek-R1 7B (reasoning preserved at 53% sparsity)
-- [ ] Benchmark evaluation (GSM8K, MMLU, HumanEval)
+- [x] Benchmark evaluation — GSM8K: 99.6% retained on DeepSeek-R1 7B, 96.9% on Qwen3.5-9B
+- [ ] MMLU, HumanEval benchmarks
 - [ ] GPU-optimized Triton kernels for HBM bandwidth reduction
 - [ ] Disk-streaming engine with neuron-indexed storage
 - [ ] Test on properly ReLU-fined models (ReluLLaMA-7B)
