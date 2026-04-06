@@ -69,6 +69,34 @@ DEFAULT_CALIBRATION_TEXTS = [
     # Creative / narrative
     "The old lighthouse keeper watched the storm roll in from the east. "
     "Dark clouds gathered like bruises on the horizon, and the sea churned.",
+
+    # Legal / formal
+    "The parties hereby agree that any dispute arising under this agreement "
+    "shall be resolved through binding arbitration in accordance with the rules.",
+
+    # Scientific / biomedical
+    "The CRISPR-Cas9 system enables precise genome editing by introducing "
+    "double-strand breaks at target loci specified by a guide RNA sequence.",
+
+    # Financial / quantitative
+    "The portfolio returned 12.4% annualized over the trailing five years, "
+    "outperforming the benchmark by 230 basis points after adjusting for risk.",
+
+    # Instructional / Q&A
+    "Question: What causes the seasons on Earth? Answer: The axial tilt of "
+    "23.5 degrees means each hemisphere receives varying sunlight year-round.",
+
+    # Dialogue / multi-turn
+    "Alice said, \"I think we should refactor the database layer first.\" "
+    "Bob replied, \"That makes sense, but let's write migration tests first.\"",
+
+    # Chinese
+    "Transformer架构通过自注意力机制在训练过程中并行处理序列中的每个标记，"
+    "从而大幅提高了大规模语言模型的训练效率和表示能力。",
+
+    # Turkish
+    "Yapay zeka alanındaki son gelişmeler, büyük dil modellerinin çok çeşitli "
+    "görevlerde insan seviyesinde performans gösterebileceğini ortaya koymuştur.",
 ]
 
 
@@ -212,6 +240,10 @@ class FUSECalibrator:
             hidden_dense = gate_acts * up_acts             # [n_tokens, d_ffn]
             outputs_dense = hidden_dense @ W_down.T        # [n_tokens, d_model]
             abs_gate = torch.abs(gate_acts)                # for top-K reuse
+            # Pre-allocate scatter buffer once; .zero_() each call
+            hidden_full = torch.empty(
+                n_tokens, d_ffn, device=hidden.device, dtype=hidden.dtype,
+            )
 
         def worst_cos_at(sparsity: float) -> float:
             """Compute worst-case cosine sim at a given sparsity (cheap)."""
@@ -222,10 +254,11 @@ class FUSECalibrator:
                 up_sp = torch.gather(up_acts, 1, top_idx)
                 hidden_sp = gate_sp * up_sp                    # [n_tokens, k]
 
-                # W_down[:, fired] @ hidden_sp — per-token (different neurons per token)
-                outputs_sparse = torch.zeros_like(outputs_dense)
-                for t in range(n_tokens):
-                    outputs_sparse[t] = W_down[:, top_idx[t]] @ hidden_sp[t]
+                # Scatter sparse values back to full FFN width, then one matmul.
+                # Avoids per-token W_down column gather entirely.
+                hidden_full.zero_()
+                hidden_full.scatter_(1, top_idx, hidden_sp)
+                outputs_sparse = hidden_full @ W_down.T
 
                 cos_sims = F.cosine_similarity(outputs_dense, outputs_sparse, dim=1)
             return float(cos_sims.min().item())

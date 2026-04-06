@@ -31,3 +31,5 @@ Thumbs.db
 # Generated files
 *.pdf
 uv.lock
+CLAUDE.md
+.claude/
